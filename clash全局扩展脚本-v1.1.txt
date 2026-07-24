@@ -1,0 +1,298 @@
+function main(config) {
+  // 读取全局扩展覆写配置中的中文自定义规则
+  const normalizeRules = value =>
+    Array.isArray(value)
+      ? value
+          .filter(rule => typeof rule === "string")
+          .map(rule => rule.trim())
+          .filter(Boolean)
+      : [];
+
+  const customPrepend = normalizeRules(config["前置规则"]);
+  const customAppend = normalizeRules(config["后置规则"]);
+  const customDelete = new Set(
+    normalizeRules(config["删除规则"])
+  );
+
+  // 这些字段只供扩展脚本使用，不交给 Mihomo 内核
+  delete config["前置规则"];
+  delete config["后置规则"];
+  delete config["删除规则"];
+  // 同时读取两种节点来源：
+  // 1. proxies：节点直接写在主配置中
+  // 2. proxy-providers：节点由代理集合提供
+  const nodes = (config.proxies || [])
+    .map(node => node && node.name)
+    .filter(Boolean);
+
+  const providerMap =
+    config["proxy-providers"] &&
+    typeof config["proxy-providers"] === "object" &&
+    !Array.isArray(config["proxy-providers"])
+      ? config["proxy-providers"]
+      : {};
+
+  const providers = Object.keys(providerMap);
+
+
+  // 给策略组附加 proxy-providers
+  const attachProviders = group => {
+    if (providers.length) {
+      group.use = providers;
+    }
+
+    return group;
+  };
+
+  // 通过 use 引入的 provider 节点依赖 provider 自己的健康检查
+  // 保留机场已有参数，只确保健康检查被启用
+  for (const providerName of providers) {
+    const provider = providerMap[providerName];
+
+    if (!provider || typeof provider !== "object") {
+      continue;
+    }
+
+    provider["health-check"] = {
+      url: "https://www.gstatic.com/generate_204",
+      interval: 600,
+      timeout: 5000,
+      lazy: true,
+      ...(provider["health-check"] || {}),
+      enable: true
+    };
+  }
+
+  config["proxy-providers"] = providerMap;
+
+  // 自动测速组
+  const fast = attachProviders({
+    name: "最快节点",
+    type: "url-test",
+    url: "https://www.gstatic.com/generate_204",
+    interval: 600,
+    tolerance: 50,
+
+    // 只有存在直接节点时才写入 proxies
+    ...(nodes.length ? { proxies: nodes } : {})
+  });
+
+  // 故障转移组
+  const fallback = attachProviders({
+    name: "故障转移",
+    type: "fallback",
+    url: "https://www.gstatic.com/generate_204",
+    interval: 600,
+
+    ...(nodes.length ? { proxies: nodes } : {})
+  });
+
+  // 默认代理节点选择
+  const defaultProxy = attachProviders({
+    name: "默认代理服务",
+    type: "select",
+    proxies: [
+      ...nodes,
+      "最快节点",
+      "故障转移",
+      "DIRECT"
+    ]
+  });
+
+  // AI 专用策略组
+  const aiGroup = attachProviders({
+    name: "AI定向代理",
+    type: "select",
+    proxies: [
+      "默认代理服务",
+      "DIRECT",
+      "最快节点",
+      "故障转移",
+      ...nodes
+    ]
+  });
+
+  // Cloudflare 专用策略组
+  const cloudflareGroup = attachProviders({
+    name: "Cloudflare定向代理",
+    type: "select",
+    proxies: [
+      "默认代理服务",
+      "DIRECT",
+      "最快节点",
+      "故障转移",
+      ...nodes
+    ]
+  });
+
+  // Steam 社区网页和图片专用策略组
+  const steamCommunityGroup = attachProviders({
+    name: "Steam社区代理",
+    type: "select",
+    proxies: [
+      "默认代理服务",
+      "DIRECT",
+      "最快节点",
+      "故障转移",
+      ...nodes
+    ]
+  });
+
+  // ZeroOmega 强制代理入口对应的策略组
+  const browserProxy = attachProviders({
+    name: "浏览器转发代理",
+    type: "select",
+    proxies: [
+      "默认代理服务",
+      ...nodes,
+      "最快节点",
+      "故障转移"
+    ]
+  });
+
+  // 未命中规则时的最终选择
+  const finalGroup = attachProviders({
+    name: "未命中流量代理",
+    type: "select",
+    proxies: [
+      "DIRECT",
+      "默认代理服务",
+      "最快节点",
+      "故障转移",
+      ...nodes
+    ]
+  });
+
+  // 不继承机场原有策略组
+  config["proxy-groups"] = [
+    defaultProxy,
+    aiGroup,
+    cloudflareGroup,
+    steamCommunityGroup,
+    browserProxy,
+    fast,
+    fallback,
+    finalGroup
+  ];
+
+  // Windows 进程识别
+  config["find-process-mode"] = "always";
+
+  // 保留其他 listener，只重建 ZeroOmega 专用入口
+  const oldListeners = Array.isArray(config.listeners)
+    ? config.listeners
+    : [];
+
+  config.listeners = [
+    ...oldListeners.filter(listener =>
+      listener &&
+      listener.name !== "zeroomega-proxy" &&
+      listener.name !== "zeroomega-direct"
+    ),
+
+    // 7898：浏览器强制代理
+    {
+      name: "zeroomega-proxy",
+      type: "mixed",
+      listen: "127.0.0.1",
+      port: 7898,
+      proxy: "浏览器转发代理",
+      udp: false
+    },
+
+    // 7899：浏览器强制直连
+    {
+      name: "zeroomega-direct",
+      type: "mixed",
+      listen: "127.0.0.1",
+      port: 7899,
+      proxy: "DIRECT",
+      udp: false
+    }
+  ];
+
+  // 不继承机场原有规则提供器
+  config["rule-providers"] = {
+    ai: {
+      type: "http",
+      behavior: "domain",
+      format: "mrs",
+      path: "./ruleset/ai.mrs",
+      url: "https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-ruleset/ai.mrs",
+      interval: 86400,
+      proxy: "默认代理服务"
+    },
+
+    gfw: {
+      type: "http",
+      behavior: "domain",
+      format: "mrs",
+      path: "./ruleset/gfw.mrs",
+      url: "https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-ruleset/gfw.mrs",
+      interval: 86400,
+      proxy: "默认代理服务"
+    }
+  };
+
+  // 脚本内置规则；“删除规则”按完整字符串精确删除
+  const builtInRules = [
+    // ==========================================
+    // Steam 社区网页、脚本、头像和用户图片代理
+    // ==========================================
+
+    "DOMAIN-SUFFIX,steamcommunity.com,Steam社区代理",
+
+    "DOMAIN,community.cloudflare.steamstatic.com,Steam社区代理",
+    "DOMAIN,community.akamai.steamstatic.com,Steam社区代理",
+    "DOMAIN,steamcommunity-a.akamaihd.net,Steam社区代理",
+
+    "DOMAIN,steamuserimages-a.akamaihd.net,Steam社区代理",
+
+    "DOMAIN,avatars.cloudflare.steamstatic.com,Steam社区代理",
+    "DOMAIN,avatars.akamai.steamstatic.com,Steam社区代理",
+
+    // ==========================================
+    // Steam 更新、下载、工坊文件及不确定流量直连
+    // ==========================================
+
+    "DOMAIN-SUFFIX,steamcontent.com,DIRECT",
+    "DOMAIN-SUFFIX,steamserver.net,DIRECT",
+    "DOMAIN-SUFFIX,steamusercontent.com,DIRECT",
+    "DOMAIN-SUFFIX,steamgames.com,DIRECT",
+    "DOMAIN-SUFFIX,steampowered.com,DIRECT",
+    "DOMAIN-SUFFIX,steamstatic.com,DIRECT",
+
+    // Steam 进程兜底直连
+    "PROCESS-NAME,steam.exe,DIRECT",
+    "PROCESS-NAME,steamservice.exe,DIRECT",
+    "PROCESS-NAME,steamwebhelper.exe,DIRECT",
+    "PROCESS-NAME,GameOverlayUI.exe,DIRECT",
+
+    // Steam 安装目录中的游戏直连
+    "PROCESS-PATH-REGEX,(?i).*\\\\steamapps\\\\common\\\\.*,DIRECT",
+
+    // AI 流量
+    "RULE-SET,ai,AI定向代理",
+
+    // 仅浏览器 7897 规则入口中的 Cloudflare 流量
+    "AND,((IN-PORT,7897),(IP-ASN,13335)),Cloudflare定向代理",
+
+    // 其他 GFW 域名
+    "RULE-SET,gfw,默认代理服务",
+
+  ];
+
+  const filteredBuiltInRules = builtInRules.filter(
+    rule => !customDelete.has(rule)
+  );
+
+  // 最终顺序：前置规则 → 内置规则 → 后置规则 → MATCH
+  config.rules = [
+    ...customPrepend,
+    ...filteredBuiltInRules,
+    ...customAppend,
+    "MATCH,未命中流量代理"
+  ];
+
+  return config;
+}

@@ -1,0 +1,11 @@
+profile:
+  store-selected: true
+
+前置规则:
+  - DOMAIN-SUFFIX,example.com,DIRECT
+
+后置规则:
+  - DOMAIN-SUFFIX,example.com,DIRECT
+
+删除规则:
+  - DOMAIN-SUFFIX,example.com,DIRECT
