@@ -5,7 +5,9 @@
 ## 目录
 
 ```text
-clash/   代理分流：Clash 脚本 + 浏览器插件配置
+clash/
+  脚本与配置
+  screenshots/   效果截图
 ```
 
 ---
@@ -20,6 +22,12 @@ clash/   代理分流：Clash 脚本 + 浏览器插件配置
 - 其他默认直连
 - 浏览器里还是打不开的，用 ZeroOmega 手动强制走代理
 
+### 效果预览
+
+脚本生效后，Clash Verge 代理组大致长这样：
+
+![代理组预览](clash/screenshots/proxy-groups.png)
+
 ### 里面有什么
 
 | 文件 | 干什么用 |
@@ -28,6 +36,7 @@ clash/   代理分流：Clash 脚本 + 浏览器插件配置
 | `clash全局扩展覆写配置示例.txt` | 想自己加/删规则时参考 |
 | `clash脚本说明.txt` | 几句设计备注 |
 | `ZeroOmegaOptions-v1.bak` | 浏览器插件配置备份，直接导入 |
+| `screenshots/proxy-groups.png` | 代理组效果截图 |
 
 ### 怎么用
 
