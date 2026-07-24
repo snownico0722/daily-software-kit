@@ -4,15 +4,11 @@
 
 ## 目录
 
-```text
-clash/
-  脚本与配置
-  screenshots/   效果截图
-```
+- [clash](#clash) · 代理分流（脚本 + ZeroOmega）
 
 ---
 
-## clash/
+## clash
 
 机场自带规则经常太粗：Steam 全走代理、不认识的网站也全走代理。这里换成一套更省事的分流：
 
@@ -36,7 +32,8 @@ clash/
 | `clash全局扩展覆写配置示例.txt` | 想自己加/删规则时参考 |
 | `clash脚本说明.txt` | 几句设计备注 |
 | `ZeroOmegaOptions-v1.bak` | 浏览器插件配置备份，直接导入 |
-| `screenshots/proxy-groups.png` | 代理组效果截图 |
+
+相关文件都在 [`clash/`](clash/) 目录里。
 
 ### 怎么用
 
