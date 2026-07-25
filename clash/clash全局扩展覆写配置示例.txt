@@ -2,7 +2,11 @@ profile:
   store-selected: true
 
 前置规则:
-  - DOMAIN-SUFFIX,example.com,DIRECT
+  - DOMAIN-SUFFIX,google.com,AI定向代理
+  - DOMAIN-SUFFIX,googleapis.com,AI定向代理
+  - DOMAIN-SUFFIX,gstatic.com,AI定向代理
+  - DOMAIN-SUFFIX,googleusercontent.com,AI定向代理
+  - DOMAIN-SUFFIX,ggpht.com,AI定向代理
 
 后置规则:
   - DOMAIN-SUFFIX,example.com,DIRECT

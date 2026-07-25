@@ -1,23 +1,4 @@
 function main(config) {
-  // 读取全局扩展覆写配置中的中文自定义规则
-  const normalizeRules = value =>
-    Array.isArray(value)
-      ? value
-          .filter(rule => typeof rule === "string")
-          .map(rule => rule.trim())
-          .filter(Boolean)
-      : [];
-
-  const customPrepend = normalizeRules(config["前置规则"]);
-  const customAppend = normalizeRules(config["后置规则"]);
-  const customDelete = new Set(
-    normalizeRules(config["删除规则"])
-  );
-
-  // 这些字段只供扩展脚本使用，不交给 Mihomo 内核
-  delete config["前置规则"];
-  delete config["后置规则"];
-  delete config["删除规则"];
   // 同时读取两种节点来源：
   // 1. proxies：节点直接写在主配置中
   // 2. proxy-providers：节点由代理集合提供
@@ -34,6 +15,10 @@ function main(config) {
 
   const providers = Object.keys(providerMap);
 
+  // 两种来源都没有时才报错
+  if (!nodes.length && !providers.length) {
+    throw new Error("订阅中没有读取到节点或代理集合");
+  }
 
   // 给策略组附加 proxy-providers
   const attachProviders = group => {
@@ -234,8 +219,8 @@ function main(config) {
     }
   };
 
-  // 脚本内置规则；“删除规则”按完整字符串精确删除
-  const builtInRules = [
+  // 不继承机场原有规则
+  config.rules = [
     // ==========================================
     // Steam 社区网页、脚本、头像和用户图片代理
     // ==========================================
@@ -280,17 +265,7 @@ function main(config) {
     // 其他 GFW 域名
     "RULE-SET,gfw,默认代理服务",
 
-  ];
-
-  const filteredBuiltInRules = builtInRules.filter(
-    rule => !customDelete.has(rule)
-  );
-
-  // 最终顺序：前置规则 → 内置规则 → 后置规则 → MATCH
-  config.rules = [
-    ...customPrepend,
-    ...filteredBuiltInRules,
-    ...customAppend,
+    // 未知流量
     "MATCH,未命中流量代理"
   ];
 
